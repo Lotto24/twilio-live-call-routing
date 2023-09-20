@@ -356,7 +356,7 @@ function teamsMenu (twiml, context, event, payload) {
           )
           .say(
             {voice},
-            `${menuPrompt} ${messages.zeroToRepeat}`
+            `${menuPrompt}    ${messages.zeroToRepeat}`
           );
           // If no response is received from the caller, the call ends
           twiml.say(
