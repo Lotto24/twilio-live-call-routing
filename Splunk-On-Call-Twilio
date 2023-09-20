@@ -341,7 +341,7 @@ function teamsMenu (twiml, context, event, payload) {
           twiml.gather(
             {
               input: 'dtmf',
-              timeout: 5,
+              timeout: 10,
               action: generateCallbackURI(
                 context,
                 {
