@@ -284,6 +284,7 @@ function teamsMenu (twiml, context, event, payload) {
             if (lookupResult.teamExists) {
               return {
                 name: team.name,
+                title: team.title,
                 slug: lookupResult.slug,
                 escPolicyName: team.escPolicyName
               };
@@ -330,7 +331,7 @@ function teamsMenu (twiml, context, event, payload) {
           let menuPrompt = 'Please press';
 
           teamsArray.forEach((team, i, array) => {
-            menuPrompt += ` ${i + 1} for ${team.name}.`;
+            menuPrompt += ` ${i + 1} for ${team.title}.`;
           });
 
           if (NUMBER_OF_MENUS === '1') {
@@ -389,6 +390,7 @@ function buildManualTeamList (context) {
       const name = context[key];
       const keyId = key.substring(4);
       let escPolicyName;
+      let title;
 
       Object.keys(context).forEach((key) => {
         if (key.substring(0, 7).toLowerCase() === 'esc_pol' && key.substring(7) === keyId) {
@@ -396,10 +398,21 @@ function buildManualTeamList (context) {
         }
       });
 
+      Object.keys(context).forEach((key) => {
+        if (key.substring(0, 5).toLowerCase() === 'title' && key.substring(5) === keyId) {
+          title = context[key];
+        }
+      });
+
+      if (!title) {
+        title = name
+      }
+
       arrayOfTeams.push(
         {
           name,
-          escPolicyName
+          escPolicyName,
+          title
         }
       );
       //arrayOfTeams.sort((a, b) => (a.name > b.name) ? 1 : -1);
@@ -407,6 +420,7 @@ function buildManualTeamList (context) {
     }
   });
 
+  log('arrayOfTeams', arrayOfTeams);
   return arrayOfTeams;
 }
 
