@@ -385,7 +385,7 @@ function buildManualTeamList (context) {
   log('buildManualTeamsList', context);
   let arrayOfTeams = [];
 
-  Object.keys(context).forEach((key) => {
+  Object.keys(context).sort().forEach((key) => {
     if (key.substring(0, 4).toLowerCase() === 'team') {
       const name = context[key];
       const keyId = key.substring(4);
