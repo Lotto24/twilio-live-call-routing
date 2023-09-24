@@ -24,7 +24,7 @@ module.exports = {
 // Make changes to messages if you want to modify what is spoken during a call
 // Message keys starting with 'vo' are the text that show up in On-Call timeline alerts
 function handler (context, event, callback) {
-  let {ALERT_HOST, API_HOST, NUMBER_OF_MENUS, voice, NO_VOICEMAIL, NO_CALL, GREETING} = context;
+  let {ALERT_HOST, API_HOST, NUMBER_OF_MENUS, voice, NO_VOICEMAIL, NO_CALL, GREETING, FALLBACK_NUMBER, FALLBACK_TITLE} = context;
   context.NO_CALL = _.isUndefined(NO_CALL)
     ? 'false'
     : NO_CALL.toLowerCase();
@@ -33,6 +33,7 @@ function handler (context, event, callback) {
     greeting: _.isUndefined(GREETING) ? 'Welcome to Splunk Lyve Call Routing.' : GREETING,
     menu: 'Please press 1 to reach an on-call representative or press 2 to leave a message.',
     noVMmenu: 'Please press 1 to reach an on-call representative or press 2 to request a callback from the team',
+    fallbackTitle: _.isUndefined(FALLBACK_TITLE) ? "in case you want to reach business instead of on call" : FALLBACK_TITLE,
     zeroToRepeat: 'Press zero to repeat this menu.',
     noResponse: 'We did not receive a response.',
     invalidResponse: 'We did not receive a valid response.',
@@ -72,6 +73,9 @@ function handler (context, event, callback) {
     ? 'false'
     : NO_VOICEMAIL;
   context.messages = messages;
+  context.fallbackNumber = _.isUndefined(FALLBACK_NUMBER)
+    ? null
+    : FALLBACK_NUMBER;
   context.headers = {
     'Content-Type': 'application/json',
     'X-VO-Api-Key': VICTOROPS_API_KEY,
@@ -297,6 +301,17 @@ function teamsMenu (twiml, context, event, payload) {
 
               resolve(twiml);
             }
+          });
+        }
+
+        // In case we want a fallback number, we have to add a 'fake' team
+        // that if selected is immediately redirected to the given number
+        if (context.fallbackNumber != null) {
+          teamsArray.push({
+            name: "fallback_team",
+            title: messages.fallbackTitle,
+            slug: context.fallbackNumber,
+            escPolicyName: null
           });
         }
 
@@ -554,66 +569,86 @@ function buildOnCallList (twiml, context, payload) {
     const {messages, NUMBER_OF_MENUS} = context;
     const {callerId, teamsArray, voice, realCallerId} = payload;
 
-    // Creates a list of phone numbers based on the first 3 escalation policies
-    const escPolicyUrlArray = createEscPolicyUrls(context, teamsArray[0].slug);
-    const phoneNumberArray = escPolicyUrlArray.map(url => getPhoneNumbers(context, url, teamsArray[0].name, teamsArray[0].escPolicyName));
-    Promise.all(phoneNumberArray)
-    .then(phoneNumbers => {
-      phoneNumbers = phoneNumbers.filter(phoneNumber => phoneNumber !== false);
-      log('phoneNumbers', phoneNumbers);
-
-      let message = messages.connecting(teamsArray[0].name);
-
-      // Welcome message if caller has not heard any other menu
-      if (NUMBER_OF_MENUS === '0') {
-        message = `${messages.greeting} ${message}`;
-      }
-
-      // If there is no one on-call with a phone number, go to voicemail
-      if (phoneNumbers.length === 0) {
-        twiml.redirect(
-          generateCallbackURI(
-            context,
-            {
-              phoneNumbers,
-              realCallerId,
-              runFunction: 'leaveAMessage',
-              teamsArray
-            }
-          )
-        );
-      // Move on to trying connect caller with people on-call
-      } else {
-        twiml.say(
-          {voice},
-          message
-        );
-        twiml.redirect(
-          generateCallbackURI(
-            context,
-            {
-              callerId,
-              firstCall: true,
-              phoneNumbers,
-              realCallerId,
-              runFunction: 'call',
-              teamsArray
-            }
-          )
-        );
-      }
-
-      resolve(twiml);
-    })
-    .catch(err => {
-      console.log(err);
-      twiml.say(
-        {voice},
-        `${messages.errorGettingPhoneNumbers}`
+    // in case fallback was selected, just call the number
+    if (teamsArray[0].slug == context.fallbackNumber) {
+      log('calling fallback number', context.fallbackNumber);
+      twiml.redirect(
+        generateCallbackURI(
+          context,
+          {
+            callerId,
+            firstCall: true,
+            phoneNumbers: [{ phone: context.fallbackNumber, user: teamsArray[0].title }],
+            realCallerId,
+            runFunction: 'call',
+            teamsArray
+          }
+        )
       );
 
       resolve(twiml);
-    });
+    } else {
+      // Creates a list of phone numbers based on the first 3 escalation policies
+      const escPolicyUrlArray = createEscPolicyUrls(context, teamsArray[0].slug);
+      const phoneNumberArray = escPolicyUrlArray.map(url => getPhoneNumbers(context, url, teamsArray[0].name, teamsArray[0].escPolicyName));
+      Promise.all(phoneNumberArray)
+      .then(phoneNumbers => {
+        phoneNumbers = phoneNumbers.filter(phoneNumber => phoneNumber !== false);
+        log('phoneNumbers', phoneNumbers);
+
+        let message = messages.connecting(teamsArray[0].name);
+
+        // Welcome message if caller has not heard any other menu
+        if (NUMBER_OF_MENUS === '0') {
+          message = `${messages.greeting} ${message}`;
+        }
+
+        // If there is no one on-call with a phone number, go to voicemail
+        if (phoneNumbers.length === 0) {
+          twiml.redirect(
+            generateCallbackURI(
+              context,
+              {
+                phoneNumbers,
+                realCallerId,
+                runFunction: 'leaveAMessage',
+                teamsArray
+              }
+            )
+          );
+        // Move on to trying connect caller with people on-call
+        } else {
+          twiml.say(
+            {voice},
+            message
+          );
+          twiml.redirect(
+            generateCallbackURI(
+              context,
+              {
+                callerId,
+                firstCall: true,
+                phoneNumbers,
+                realCallerId,
+                runFunction: 'call',
+                teamsArray
+              }
+            )
+          );
+        }
+
+        resolve(twiml);
+      })
+      .catch(err => {
+        console.log(err);
+        twiml.say(
+          {voice},
+          `${messages.errorGettingPhoneNumbers}`
+        );
+
+        resolve(twiml);
+      });
+    }
   });
 }
 
