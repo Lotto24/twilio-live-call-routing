@@ -1132,6 +1132,13 @@ function postToVictorOps (event, context, payload) {
     const {ALERT_HOST, messages, VICTOROPS_TWILIO_SERVICE_API_KEY, NO_VOICEMAIL, VM_EMAIL} = context;
     const {CallSid, CallStatus, TranscriptionStatus, TranscriptionText,ParentCallSid, DialCallStatus} = event;
     const {callAnsweredByHuman, detailedLog, goToVM, phoneNumber, realCallerId, teamsArray, voice, entityId} = payload;
+
+    // in case fallback was selected, we skip posting to VictorOps
+    if (teamsArray[0].slug == context.fallbackNumber) {
+      log('calling fallback number completed; skipping post to VictorOps');
+      return resolve('');
+    }
+
     const alert = {
       monitoring_tool: 'Twilio',
       entity_id: CallSid,
