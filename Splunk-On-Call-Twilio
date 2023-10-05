@@ -24,7 +24,7 @@ module.exports = {
 // Make changes to messages if you want to modify what is spoken during a call
 // Message keys starting with 'vo' are the text that show up in On-Call timeline alerts
 function handler (context, event, callback) {
-  let {ALERT_HOST, API_HOST, NUMBER_OF_MENUS, voice, NO_VOICEMAIL, NO_CALL, GREETING, FALLBACK_NUMBER, FALLBACK_TITLE} = context;
+  let {ALERT_HOST, API_HOST, NUMBER_OF_MENUS, voice, NO_VOICEMAIL, NO_CALL, GREETING, FALLBACK_NUMBER, FALLBACK_TITLE, GREETING_RECEIVE_CALL} = context;
   context.NO_CALL = _.isUndefined(NO_CALL)
     ? 'false'
     : NO_CALL.toLowerCase();
@@ -42,6 +42,7 @@ function handler (context, event, callback) {
     otherPartyDisconnect: 'The other party has disconnected.',
     attemptTranscription: 'Twilio will attempt to transcribe your message and create an incident in Splunk On-Call.',
     pressKeyToConnect: 'This is Splunk Lyve Call Routing. Press any number to connect.',
+    pressKeyToConnect: _.isUndefined(GREETING_RECEIVE_CALL) ? 'This is Splunk Lyve Call Routing. Press any number to connect.' : GREETING_RECEIVE_CALL,
     errorGettingPhoneNumbers: 'There was an error retrieving the on-call phone numbers. Please try again.',
     nextOnCall: 'Trying next on-call representative.',
     connected: 'You are now connected.',
@@ -914,7 +915,29 @@ function isHuman (twiml, context, event, payload) {
       twiml.gather(
         {
           input: 'dtmf',
-          timeout: 8,
+          timeout: 20,
+          action: generateCallbackURI(
+            context,
+            {
+              detailedLog,
+              phoneNumber,
+              phoneNumbers,
+              realCallerId,
+              runFunction: 'isHuman',
+              teamsArray
+            }
+          ),
+          numDigits: 1
+        }
+      )
+      .say(
+        {voice},
+        `${messages.pressKeyToConnect}`
+      );
+      twiml.gather(
+        {
+          input: 'dtmf',
+          timeout: 20,
           action: generateCallbackURI(
             context,
             {
