@@ -265,6 +265,7 @@ function teamsMenu (twiml, context, event, payload) {
       .then(response => {
         let teamsArray;
         let teamLookupFail = false;
+        let teamLookupFailure = "";
 
         if (Digits === 2) {
           goToVM = true;
@@ -283,26 +284,22 @@ function teamsMenu (twiml, context, event, payload) {
           });
         } else {
           teamsArray = buildManualTeamList(context)
-          .map(team => {
+          .reduce((result, team) => {
             const lookupResult = lookupTeamSlug(team.name, JSON.parse(response.body));
 
             if (lookupResult.teamExists) {
-              return {
+              result.push( {
                 name: team.name,
                 title: team.title,
                 slug: lookupResult.slug,
                 escPolicyName: team.escPolicyName
-              };
+              });
             } else {
               teamLookupFail = true;
-              twiml.say(
-                {voice},
-                `${messages.noTeam(team.name)} ${messages.goodbye}`
-              );
-
-              resolve(twiml);
+              teamLookupFailure = `Twilio: Team '${team.name}' doesn't exist. Please check the config in Twilio!`
             }
-          });
+            return result;
+          }, []);
         }
 
         // In case we want a fallback number, we have to add a 'fake' team
@@ -314,10 +311,6 @@ function teamsMenu (twiml, context, event, payload) {
             slug: context.fallbackNumber,
             escPolicyName: null
           });
-        }
-
-        if (teamLookupFail) {
-          return;
         }
 
         // An error message is read and the call ends if there are no teams available
@@ -381,7 +374,15 @@ function teamsMenu (twiml, context, event, payload) {
           );
         }
 
-        resolve(twiml);
+        if (teamLookupFail) {
+          slackAlert(context, teamLookupFailure)
+          .then(() => {
+            console.log('Alerted slack about team mapping error');
+            resolve(twiml);
+          })
+        } else {
+          resolve(twiml);
+        }
       })
       .catch(err => {
         console.log(err);
@@ -394,6 +395,25 @@ function teamsMenu (twiml, context, event, payload) {
       });
     }
   });
+}
+
+async function slackAlert(context, message) {
+  const slackUrl = context.SLACK_URL;
+  const channel = context.SLACK_CHANNEL;
+  const body = {
+    channel: channel,
+    text: message
+  }
+  try {
+    await got.post(slackUrl, {
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    })
+  } catch (err) {
+    console.log(err);
+  }
 }
 
 // Creates a list of teams for the teamsMenu if there are any keys that begin with 'TEAM' in Twilio configure
@@ -771,7 +791,7 @@ function call (twiml, context, event, payload) {
     const {callerId, firstCall, goToVM, phoneNumbers, teamsArray, voice} = payload;
     let {detailedLog, realCallerId} = payload;
     let phoneNumber;
-    
+
     // Caller was connected to on-call person and call completed
     if (DialCallStatus === 'completed' && DialBridged == 'true') {
       twiml.say(
@@ -991,7 +1011,7 @@ function leaveAMessage (twiml, context, event, payload) {
     const {messages, NO_VOICEMAIL} = context;
     const {DialCallStatus, DialBridged} = event;
     const {callerId, detailedLog, goToVM, teamsArray, sayGoodbye, voice, realCallerId} = payload;
-    
+
     // Caller was connected to on-call person and call completed
     if (DialCallStatus == 'completed' && DialBridged == 'true') {
       return postToVictorOps(event, context, payload);
@@ -999,7 +1019,7 @@ function leaveAMessage (twiml, context, event, payload) {
       return new Promise((resolve, reject) => {
         // If caller does not hang up after leaving message,
         // this message will play and then end the call
-        //} 
+        //}
         if (sayGoodbye === true) {
           twiml.say(
             {voice},
@@ -1122,7 +1142,7 @@ function emailVoicemailLink (event, context, transcription_status){
   // Define Handler function required for all Twilio Functions
   //exports.handler = function(context, event, callback) {
   // Build SG mail request
-  sgMail.setApiKey(context.SENDGRID_API_SECRET);													 
+  sgMail.setApiKey(context.SENDGRID_API_SECRET);
   let msg;
   if (transcription_status != false){
     // Define message params
